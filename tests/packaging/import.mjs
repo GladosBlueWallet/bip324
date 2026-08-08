@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 
-globalThis.TextEncoder = undefined;
-globalThis.TextDecoder = undefined;
 const { Networks, decodeMessage, encodeMessage, EventSocketDuplex } = await import(
-  "../../dist/react-native.js"
+  "../../src/index.ts"
 );
-const { NodeSocketDuplex } = await import("../../dist/node.js");
-const main = await import("../../dist/index.js");
+const { NodeSocketDuplex } = await import("../../src/node.ts");
+const rn = await import("../../src/react-native.ts");
+const pkg = await import("bip324");
+const pkgNode = await import("bip324/node");
 
 assert.equal(Networks.mainnet.defaultPort, 8333);
 assert.deepEqual(
@@ -29,4 +29,7 @@ const version = {
 assert.deepEqual(decodeMessage(encodeMessage(version)), version);
 assert.equal(typeof NodeSocketDuplex, "function");
 assert.equal(typeof EventSocketDuplex, "function");
-assert.equal(typeof main.EventSocketDuplex, "function");
+assert.equal(typeof rn.EventSocketDuplex, "function");
+assert.equal(typeof pkg.EventSocketDuplex, "function");
+assert.equal(typeof pkgNode.NodeSocketDuplex, "function");
+assert.equal(pkg.Networks.mainnet.defaultPort, 8333);
