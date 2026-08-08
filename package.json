@@ -6,26 +6,27 @@
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "react-native": "./dist/react-native.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./node": {
-      "types": "./dist/node.d.ts",
+      "types": "./src/node.ts",
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     }
   },
   "files": [
     "dist",
+    "src",
     "README.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/node.ts --format esm --dts --clean --sourcemap && tsup --config tsup.react-native.config.ts",
+    "build": "tsup src/index.ts src/node.ts --format esm --clean --sourcemap && tsup --config tsup.react-native.config.ts",
     "example:getaddr": "bun examples/signet-getaddr.ts",
     "example:mainnet": "bun examples/mainnet-fetch-block.ts",
     "test": "bun test",
