@@ -1,0 +1,35 @@
+/** BIP-324 short message type IDs (1-byte). 0 means 12-byte ASCII follows. */
+export const SHORT_MESSAGE_IDS: Readonly<Record<string, number>> = Object.freeze({
+  addr: 1,
+  block: 2,
+  blocktxn: 3,
+  cmpctblock: 4,
+  feefilter: 5,
+  filteradd: 6,
+  filterclear: 7,
+  filterload: 8,
+  getblocks: 9,
+  getblocktxn: 10,
+  getdata: 11,
+  getheaders: 12,
+  headers: 13,
+  inv: 14,
+  mempool: 15,
+  merkleblock: 16,
+  notfound: 17,
+  ping: 18,
+  pong: 19,
+  sendcmpct: 20,
+  tx: 21,
+  getcfilters: 22,
+  cfilter: 23,
+  getcfheaders: 24,
+  cfheaders: 25,
+  getcfcheckpt: 26,
+  cfcheckpt: 27,
+  addrv2: 28,
+});
+
+export const SHORT_ID_TO_COMMAND: Readonly<Record<number, string>> = Object.freeze(
+  Object.fromEntries(Object.entries(SHORT_MESSAGE_IDS).map(([cmd, id]) => [id, cmd])),
+);
