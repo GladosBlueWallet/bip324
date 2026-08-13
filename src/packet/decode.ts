@@ -14,6 +14,8 @@ const CHACHA20POLY1305_EXPANSION = 16;
  * Without a cap, three length bytes could force a ~16 MiB allocation.
  */
 export const MAX_CONTENTS_LEN = 4_000_013;
+/** Consecutive ignore-bit packets skipped per `decodePacket` call. */
+export const MAX_IGNORE_PACKETS = 256;
 
 export type { ByteReader } from "../io/read-exactly.ts";
 
@@ -21,6 +23,8 @@ export type DecodePacketOpts = {
   aad?: Uint8Array;
   /** Override the contents-length cap (defaults to {@link MAX_CONTENTS_LEN}). */
   maxContentsLen?: number;
+  /** Override the consecutive decoy cap (defaults to {@link MAX_IGNORE_PACKETS}). */
+  maxIgnorePackets?: number;
 };
 
 /**
@@ -35,6 +39,8 @@ export async function decodePacket(
   try {
     let aad = opts.aad ?? new Uint8Array(0);
     const maxContentsLen = opts.maxContentsLen ?? MAX_CONTENTS_LEN;
+    const maxIgnorePackets = opts.maxIgnorePackets ?? MAX_IGNORE_PACKETS;
+    let ignored = 0;
     for (;;) {
       const encLen = await readExactly(reader, LENGTH_FIELD_LEN);
       const lenBytes = session.recvL.decrypt(encLen);
@@ -52,6 +58,10 @@ export async function decodePacket(
       const header = plaintext[0]!;
       const contents = plaintext.slice(HEADER_LEN);
       if ((header & (1 << IGNORE_BIT_POS)) === 0) return contents;
+      ignored += 1;
+      if (ignored > maxIgnorePackets) {
+        throw new Error(`too many consecutive decoy packets (${ignored})`);
+      }
     }
   } catch (error) {
     destroySession(session);

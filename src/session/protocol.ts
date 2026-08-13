@@ -12,7 +12,7 @@ import {
 import type { ByteDuplex } from "../io/byte-duplex.ts";
 import { decodeMessage, encodeMessage, type Message } from "../messages/codec.ts";
 import type { Network } from "../networks/networks.ts";
-import { decodePacket } from "../packet/decode.ts";
+import { decodePacket, MAX_CONTENTS_LEN } from "../packet/decode.ts";
 import { encodePacket } from "../packet/encode.ts";
 
 export type ProtocolOptions = {
@@ -72,8 +72,12 @@ export class Protocol {
     const contents = encodeMessage(msg);
     return this.#enqueue("send", async () => {
       this.#assertOpen();
+      if (contents.length > MAX_CONTENTS_LEN) {
+        throw new Error(`contents too large: ${contents.length}`);
+      }
+      const packet = encodePacket(this.#session, contents);
       try {
-        await this.#duplex.write(encodePacket(this.#session, contents));
+        await this.#duplex.write(packet);
       } catch (error) {
         await this.#invalidate();
         throw error;

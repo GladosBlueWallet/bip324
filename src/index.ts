@@ -90,6 +90,7 @@ export { Networks, type Network, type NetworkName } from "./networks/networks.ts
 export {
   decodePacket,
   MAX_CONTENTS_LEN,
+  MAX_IGNORE_PACKETS,
   type ByteReader,
   type DecodePacketOpts,
 } from "./packet/decode.ts";

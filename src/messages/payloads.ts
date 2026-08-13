@@ -7,6 +7,15 @@ const MAX_HEADERS = 2_000;
 const MAX_INVENTORY = 50_000;
 const MAX_ADDR_V2_LENGTH = 512;
 const MAX_FIELD_LENGTH = 0x00ff_ffff;
+const BIP155_ADDRESS_LENGTHS: Readonly<Record<number, number>> = {
+  1: 4,
+  2: 16,
+  3: 10,
+  4: 32,
+  5: 32,
+  6: 16,
+  7: 16,
+};
 // These exceed the maximum counts possible in a consensus-valid 4 MWU block,
 // while bounding eager JavaScript object allocation for malformed P2P payloads.
 const MAX_EAGER_INPUTS = 25_000;
@@ -163,6 +172,7 @@ export function decodeVersion(bytes: Uint8Array): VersionPayload {
     nonce: reader.u64le(),
     userAgent: reader.varString(256),
     startHeight: reader.i32le(),
+    relay: true,
   };
   if (reader.remaining > 0) {
     const relay = reader.u8();
@@ -448,20 +458,11 @@ function readNetworkAddress(reader: PayloadReader): NetworkAddress {
 }
 
 function validateAddrV2(networkId: number, length: number): void {
-  if (!Number.isInteger(networkId) || networkId < 1 || networkId > 255) {
+  if (!Number.isInteger(networkId) || networkId < 0 || networkId > 255) {
     throw new Error(`invalid addrv2 network ID: ${networkId}`);
   }
   if (length > MAX_ADDR_V2_LENGTH) throw new Error("addrv2 address length exceeds 512");
-  const knownLengths: Record<number, number> = {
-    1: 4,
-    2: 16,
-    3: 10,
-    4: 32,
-    5: 32,
-    6: 16,
-    7: 16,
-  };
-  const expected = knownLengths[networkId];
+  const expected = BIP155_ADDRESS_LENGTHS[networkId];
   if (expected !== undefined && length !== expected) {
     throw new Error(`addrv2 network ${networkId} address length must be ${expected}, got ${length}`);
   }

@@ -24,6 +24,7 @@ const version = {
     nonce: 0n,
     userAgent: "/π/",
     startHeight: 0,
+    relay: true,
   },
 };
 assert.deepEqual(decodeMessage(encodeMessage(version)), version);

@@ -211,14 +211,33 @@ export async function waitForMessage(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
-    const message = await Promise.race([
-      protocol.readMessage(),
-      sleepReject(remaining, `timed out waiting for message after ${timeoutMs}ms`),
-    ]);
+    const message = await readMessageWithTimeout(protocol, remaining, timeoutMs);
     if (match(message)) return message;
     await answerPing(protocol, message);
   }
   throw new Error(`timed out waiting for message after ${timeoutMs}ms`);
+}
+
+async function readMessageWithTimeout(
+  protocol: Protocol,
+  remainingMs: number,
+  timeoutMs: number,
+): Promise<Message> {
+  const read = protocol.readMessage();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<Message>((resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`timed out waiting for message after ${timeoutMs}ms`));
+        void protocol.close().catch(() => {});
+      }, Math.max(0, remainingMs));
+      timer.unref?.();
+      read.then(resolve, reject);
+    });
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    void read.catch(() => {});
+  }
 }
 
 export async function collectAddresses(
@@ -242,12 +261,4 @@ export async function collectAddresses(
       .filter((peer): peer is PeerCandidate => peer !== undefined);
   }
   throw new Error("unreachable");
-}
-
-function sleepReject(ms: number, message: string): Promise<never> {
-  return new Promise((_, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), Math.max(0, ms));
-    // Allow process exit in Bun if nothing else is pending in tests that cancel early.
-    timer.unref?.();
-  });
 }

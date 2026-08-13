@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { bytesToHex } from "../../src/crypto/bytes.ts";
 import { pairedByteDuplexes, type ByteDuplex } from "../../src/io/byte-duplex.ts";
 import { Networks } from "../../src/networks/networks.ts";
+import { MAX_CONTENTS_LEN } from "../../src/packet/decode.ts";
 import {
   AuthenticationError,
   Protocol,
@@ -57,11 +58,11 @@ describe("Protocol session", () => {
     tamper = true;
     await alice.writeMessage({ command: "ping", nonce: new Uint8Array(8) });
 
-    expect(bob.readMessage()).rejects.toBeInstanceOf(AuthenticationError);
+    await expect(bob.readMessage()).rejects.toBeInstanceOf(AuthenticationError);
     expect(bob.isClosed).toBe(true);
     expect(closes).toBe(1);
-    expect(bob.readMessage()).rejects.toBeInstanceOf(ProtocolClosedError);
-    expect(bob.writeMessage({ command: "getaddr" })).rejects.toBeInstanceOf(ProtocolClosedError);
+    await expect(bob.readMessage()).rejects.toBeInstanceOf(ProtocolClosedError);
+    await expect(bob.writeMessage({ command: "getaddr" })).rejects.toBeInstanceOf(ProtocolClosedError);
   });
 
   test("a failed write closes the session after cipher state advances", async () => {
@@ -85,7 +86,7 @@ describe("Protocol session", () => {
     ]);
 
     failWrites = true;
-    expect(alice.writeMessage({ command: "getaddr" })).rejects.toThrow("socket failed");
+    await expect(alice.writeMessage({ command: "getaddr" })).rejects.toThrow("socket failed");
     expect(alice.isClosed).toBe(true);
     expect(closes).toBe(1);
   });
@@ -152,5 +153,27 @@ describe("Protocol session", () => {
     releaseClose();
     await Promise.all([first, second]);
     expect(secondSettled).toBe(true);
+  });
+
+  test("oversized local writes fail without destroying a healthy session", async () => {
+    const [left, right] = pairedByteDuplexes();
+    const [alice, bob] = await Promise.all([
+      Protocol.connect(left, { role: "initiator", network: Networks.regtest }),
+      Protocol.connect(right, { role: "responder", network: Networks.regtest }),
+    ]);
+
+    await expect(
+      alice.writeMessage({
+        command: "opaque",
+        type: { kind: "short", id: 250 },
+        payload: new Uint8Array(MAX_CONTENTS_LEN + 1),
+      }),
+    ).rejects.toThrow(/too large|exceeds/);
+    expect(alice.isClosed).toBe(false);
+
+    const nonce = new Uint8Array(8).fill(7);
+    await alice.writeMessage({ command: "ping", nonce });
+    const got = await bob.readMessage();
+    expect(got.command).toBe("ping");
   });
 });

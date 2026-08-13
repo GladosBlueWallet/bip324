@@ -88,6 +88,38 @@ describe("packet roundtrip", () => {
     expect(offset).toBe(stream.length);
   });
 
+  test("rejects a run of decoys above the consecutive ignore cap", async () => {
+    const a = ellswiftCreate();
+    const b = ellswiftCreate();
+    const secretA = v2Ecdh(a.privateKey, b.publicKey, a.publicKey, true);
+    const secretB = v2Ecdh(b.privateKey, a.publicKey, b.publicKey, false);
+    const send = deriveSessionKeys(secretA, Networks.mainnet.magic, true);
+    const recv = deriveSessionKeys(secretB, Networks.mainnet.magic, false);
+    const decoy = encodePacket(send, new Uint8Array([0xaa]), { ignore: true });
+    const extra = encodePacket(send, new Uint8Array([0xbb]), { ignore: true });
+    const real = encodePacket(send, new Uint8Array([0xcc]));
+    const stream = new Uint8Array(decoy.length + extra.length + real.length);
+    stream.set(decoy);
+    stream.set(extra, decoy.length);
+    stream.set(real, decoy.length + extra.length);
+    let offset = 0;
+
+    await expect(
+      decodePacket(
+        recv,
+        {
+          async read(n) {
+            const chunk = stream.slice(offset, offset + n);
+            offset += chunk.length;
+            return chunk;
+          },
+        },
+        { maxIgnorePackets: 1 },
+      ),
+    ).rejects.toThrow("decoy");
+    expect(() => recv.recvL.decrypt(new Uint8Array(3))).toThrow("destroyed");
+  });
+
   test("roundtrips across the 224-packet rekey boundary for both ciphers", async () => {
     const a = ellswiftCreate();
     const b = ellswiftCreate();
@@ -161,7 +193,7 @@ describe("packet roundtrip", () => {
     packet[packet.length - 1] = packet[packet.length - 1]! ^ 1;
     let offset = 0;
 
-    expect(
+    await expect(
       decodePacket(recv, {
         async read(n) {
           const chunk = packet.slice(offset, offset + n);

@@ -165,6 +165,67 @@ describe("waitForMessage", () => {
       await Promise.all([alice.close(), bob.close()]);
     }
   });
+
+  test("timeout closes the session so an in-flight read cannot steal later messages", async () => {
+    const [alice, bob] = await pairedProtocols();
+    try {
+      await Promise.all([
+        completeVersionHandshake(alice, {
+          port: 18444,
+          name: "test",
+          version: "0",
+          sendAddrV2: false,
+        }),
+        completeVersionHandshake(bob, {
+          port: 18444,
+          name: "test",
+          version: "0",
+          sendAddrV2: false,
+        }),
+      ]);
+      await expect(waitForMessage(alice, () => false, { timeoutMs: 30 }))
+        .rejects.toThrow("timed out waiting for message");
+      expect(alice.isClosed).toBe(true);
+    } finally {
+      await Promise.all([alice.close(), bob.close()]);
+    }
+  });
+
+  test("a matched read cancels the timeout instead of rejecting later", async () => {
+    const [alice, bob] = await pairedProtocols();
+    const rejections: unknown[] = [];
+    const onUnhandled = (error: unknown) => {
+      rejections.push(error);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await Promise.all([
+        completeVersionHandshake(alice, {
+          port: 18444,
+          name: "test",
+          version: "0",
+          sendAddrV2: false,
+        }),
+        completeVersionHandshake(bob, {
+          port: 18444,
+          name: "test",
+          version: "0",
+          sendAddrV2: false,
+        }),
+      ]);
+      const got = waitForMessage(alice, (m) => m.command === "getaddr", { timeoutMs: 80 });
+      await bob.writeMessage({ command: "getaddr" });
+      expect((await got).command).toBe("getaddr");
+      expect(alice.isClosed).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(rejections).toEqual([]);
+      await alice.writeMessage({ command: "ping", nonce: new Uint8Array(8) });
+      expect((await bob.readMessage()).command).toBe("ping");
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      await Promise.all([alice.close(), bob.close()]);
+    }
+  });
 });
 
 describe("resolveSeedPeers", () => {

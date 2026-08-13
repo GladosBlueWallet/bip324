@@ -25,8 +25,19 @@ export async function connectNodeTcp(
   }
   return new Promise<NodeSocketDuplex>((resolve, reject) => {
     const socket = connect(options);
+    const onConnect = () => {
+      signal?.removeEventListener("abort", onAbort);
+      socket.off("error", onError);
+      try {
+        resolve(new NodeSocketDuplex(socket, duplexOptions));
+      } catch (error) {
+        socket.destroy();
+        reject(error);
+      }
+    };
     const onAbort = () => {
       socket.off("error", onError);
+      socket.off("connect", onConnect);
       socket.destroy();
       reject(
         signal?.reason instanceof Error
@@ -36,21 +47,13 @@ export async function connectNodeTcp(
     };
     const onError = (error: Error) => {
       signal?.removeEventListener("abort", onAbort);
+      socket.off("connect", onConnect);
       socket.destroy();
       reject(error);
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     socket.once("error", onError);
-    socket.once("connect", () => {
-      signal?.removeEventListener("abort", onAbort);
-      socket.off("error", onError);
-      try {
-        resolve(new NodeSocketDuplex(socket, duplexOptions));
-      } catch (error) {
-        socket.destroy();
-        reject(error);
-      }
-    });
+    socket.once("connect", onConnect);
   });
 }
 

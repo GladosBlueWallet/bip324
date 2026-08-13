@@ -17,53 +17,60 @@ describe("BIP-324 packet_encoding vectors", () => {
   );
 
   for (const row of rows) {
-    test(`idx=${row.in_idx} keys + ciphertext`, () => {
-      const priv = hexToBytes(row.in_priv_ours!);
-      const ours = hexToBytes(row.in_ellswift_ours!);
-      const theirs = hexToBytes(row.in_ellswift_theirs!);
-      const initiating = row.in_initiating === "1";
+    const contentsBytes = (row.in_contents!.length / 2) * Number(row.in_multiply);
+    test(
+      `idx=${row.in_idx} keys + ciphertext`,
+      () => {
+        const priv = hexToBytes(row.in_priv_ours!);
+        const ours = hexToBytes(row.in_ellswift_ours!);
+        const theirs = hexToBytes(row.in_ellswift_theirs!);
+        const initiating = row.in_initiating === "1";
 
-      expect(bytesToHex(ellswiftDecode(ours))).toBe(row.mid_x_ours!);
-      expect(bytesToHex(ellswiftDecode(theirs))).toBe(row.mid_x_theirs!);
-      expect(bytesToHex(ellswiftEcdhXonly(theirs, priv))).toBe(row.mid_x_shared!);
+        expect(bytesToHex(ellswiftDecode(ours))).toBe(row.mid_x_ours!);
+        expect(bytesToHex(ellswiftDecode(theirs))).toBe(row.mid_x_theirs!);
+        expect(bytesToHex(ellswiftEcdhXonly(theirs, priv))).toBe(row.mid_x_shared!);
 
-      const secret = v2Ecdh(priv, theirs, ours, initiating);
-      expect(bytesToHex(secret)).toBe(row.mid_shared_secret!);
+        const secret = v2Ecdh(priv, theirs, ours, initiating);
+        expect(bytesToHex(secret)).toBe(row.mid_shared_secret!);
 
-      const keys = deriveKeyMaterial(secret, MAGIC);
-      expect(bytesToHex(keys.initiatorL)).toBe(row.mid_initiator_l!);
-      expect(bytesToHex(keys.initiatorP)).toBe(row.mid_initiator_p!);
-      expect(bytesToHex(keys.responderL)).toBe(row.mid_responder_l!);
-      expect(bytesToHex(keys.responderP)).toBe(row.mid_responder_p!);
-      expect(bytesToHex(keys.sessionId)).toBe(row.out_session_id!);
+        const keys = deriveKeyMaterial(secret, MAGIC);
+        expect(bytesToHex(keys.initiatorL)).toBe(row.mid_initiator_l!);
+        expect(bytesToHex(keys.initiatorP)).toBe(row.mid_initiator_p!);
+        expect(bytesToHex(keys.responderL)).toBe(row.mid_responder_l!);
+        expect(bytesToHex(keys.responderP)).toBe(row.mid_responder_p!);
+        expect(bytesToHex(keys.sessionId)).toBe(row.out_session_id!);
 
-      const session = deriveSessionKeys(secret, MAGIC, initiating);
-      expect(bytesToHex(session.sessionId)).toBe(row.out_session_id!);
-      expect(bytesToHex(session.sendGarbageTerminator)).toBe(row.mid_send_garbage_terminator!);
-      expect(bytesToHex(session.recvGarbageTerminator)).toBe(row.mid_recv_garbage_terminator!);
+        const session = deriveSessionKeys(secret, MAGIC, initiating);
+        expect(bytesToHex(session.sessionId)).toBe(row.out_session_id!);
+        expect(bytesToHex(session.sendGarbageTerminator)).toBe(row.mid_send_garbage_terminator!);
+        expect(bytesToHex(session.recvGarbageTerminator)).toBe(row.mid_recv_garbage_terminator!);
 
-      // Advance ciphers with in_idx empty packets (matches BIP run_test_vectors.py)
-      const prior = Number(row.in_idx);
-      for (let i = 0; i < prior; i++) {
-        encodePacket(session, new Uint8Array(0));
-      }
+        // Advance ciphers with in_idx empty packets (matches BIP run_test_vectors.py)
+        const prior = Number(row.in_idx);
+        for (let i = 0; i < prior; i++) {
+          encodePacket(session, new Uint8Array(0));
+        }
 
-      const unit = hexToBytes(row.in_contents!);
-      const multiply = Number(row.in_multiply);
-      const contents = new Uint8Array(unit.length * multiply);
-      for (let i = 0; i < multiply; i++) contents.set(unit, i * unit.length);
+        const unit = hexToBytes(row.in_contents!);
+        const multiply = Number(row.in_multiply);
+        const contents = new Uint8Array(unit.length * multiply);
+        for (let i = 0; i < multiply; i++) contents.set(unit, i * unit.length);
 
-      const aad = row.in_aad ? hexToBytes(row.in_aad) : new Uint8Array(0);
-      const ignore = row.in_ignore === "1";
-      const ciphertext = encodePacket(session, contents, { aad, ignore });
+        const aad = row.in_aad ? hexToBytes(row.in_aad) : new Uint8Array(0);
+        const ignore = row.in_ignore === "1";
+        const ciphertext = encodePacket(session, contents, { aad, ignore });
 
-      if (row.out_ciphertext) {
-        expect(bytesToHex(ciphertext)).toBe(row.out_ciphertext);
-      }
-      if (row.out_ciphertext_endswith) {
-        expect(bytesToHex(ciphertext).endsWith(row.out_ciphertext_endswith)).toBe(true);
-      }
-    });
+        if (row.out_ciphertext) {
+          expect(bytesToHex(ciphertext)).toBe(row.out_ciphertext);
+        }
+        if (row.out_ciphertext_endswith) {
+          const suffix = row.out_ciphertext_endswith;
+          const suffixBytes = suffix.length / 2;
+          expect(bytesToHex(ciphertext.subarray(ciphertext.length - suffixBytes))).toBe(suffix);
+        }
+      },
+      contentsBytes > 1_000_000 ? 30_000 : undefined,
+    );
 
     if (row.out_ciphertext && row.in_ignore !== "1") {
       test(`idx=${row.in_idx} independently decrypts official ciphertext`, async () => {

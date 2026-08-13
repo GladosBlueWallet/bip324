@@ -61,6 +61,27 @@ describe("typed Bitcoin P2P payload codecs", () => {
     expect(decodeMessage(wire)).toEqual({ command: "version", payload });
   });
 
+  test("version without a relay byte defaults to BIP-37 relay-enabled", () => {
+    const withRelay = encodeMessage({
+      command: "version",
+      payload: {
+        version: 70_016,
+        services: 0n,
+        timestamp: 0n,
+        receiver: { services: 0n, ip: new Uint8Array(16), port: 0 },
+        sender: { services: 0n, ip: new Uint8Array(16), port: 0 },
+        nonce: 0n,
+        userAgent: "/",
+        startHeight: 0,
+        relay: false,
+      },
+    });
+    const decoded = decodeMessage(withRelay.subarray(0, withRelay.length - 1));
+    expect(decoded.command).toBe("version");
+    if (decoded.command !== "version") throw new Error("expected version");
+    expect(decoded.payload.relay).toBe(true);
+  });
+
   test("addr and addrv2 encode network addresses", () => {
     const addr = {
       command: "addr" as const,
@@ -94,6 +115,45 @@ describe("typed Bitcoin P2P payload codecs", () => {
     const addrv2Wire = encodeMessage(addrv2);
     expect(bytesToHex(addrv2Wire)).toBe("1c0104030201fd000801047f000001208d");
     expect(decodeMessage(addrv2Wire)).toEqual(addrv2);
+  });
+
+  test("addrv2 keeps unknown network IDs and only rejects known-ID length mismatches", () => {
+    const unknownFuture = hexToBytes(
+      "1c01000000000008110200000000000000000000000000000000208d",
+    );
+    const decodedFuture = decodeMessage(unknownFuture);
+    expect(decodedFuture).toEqual({
+      command: "addrv2",
+      payload: {
+        addresses: [{
+          time: 0,
+          services: 0n,
+          networkId: 8,
+          address: hexToBytes("0200000000000000000000000000000000"),
+          port: 8333,
+        }],
+      },
+    });
+    expect(encodeMessage(decodedFuture)).toEqual(unknownFuture);
+
+    const reservedZero = hexToBytes("1c0100000000000001aa208d");
+    expect(decodeMessage(reservedZero)).toEqual({
+      command: "addrv2",
+      payload: {
+        addresses: [{
+          time: 0,
+          services: 0n,
+          networkId: 0,
+          address: Uint8Array.of(0xaa),
+          port: 8333,
+        }],
+      },
+    });
+
+    expect(() => decodeMessage(hexToBytes("1c01000000000001037f0001208d")))
+      .toThrow("address length");
+    expect(() => decodeMessage(hexToBytes("1c01000000000007110200000000000000000000000000000000208d")))
+      .toThrow("address length");
   });
 
   test("getheaders, headers, and inventory vectors roundtrip", () => {
@@ -205,8 +265,6 @@ describe("typed Bitcoin P2P payload codecs", () => {
     ].join("");
     expect(() => decodeMessage(hexToBytes(superfluousWitness)))
       .toThrow("superfluous");
-    expect(() => decodeMessage(hexToBytes("1c01000000000007110200000000000000000000000000000000208d")))
-      .toThrow("address length");
     const manyWitnessItems = [
       "15", "02000000", "0001", "01", "11".repeat(32), "00000000", "00", "ffffffff",
       "01", "0100000000000000", "01", "51",

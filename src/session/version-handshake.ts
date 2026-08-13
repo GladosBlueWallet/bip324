@@ -25,6 +25,8 @@ export type VersionHandshakeResult = {
   startHeight: number;
 };
 
+const MAX_VERSION_HANDSHAKE_MESSAGES = 32;
+
 /** Reply to ping; no-op for other commands. */
 export async function answerPing(
   protocol: Protocol,
@@ -70,10 +72,16 @@ export async function completeVersionHandshake(
   let receivedVerack = false;
   let peerServices = 0n;
   let peerStartHeight = 0;
+  let seen = 0;
 
   while (!receivedVersion || !receivedVerack) {
+    if (seen >= MAX_VERSION_HANDSHAKE_MESSAGES) {
+      throw new Error("version handshake exceeded message limit");
+    }
+    seen += 1;
     const message = await protocol.readMessage();
     if (message.command === "version") {
+      if (receivedVersion) continue;
       receivedVersion = true;
       peerServices = message.payload.services;
       peerStartHeight = message.payload.startHeight;
